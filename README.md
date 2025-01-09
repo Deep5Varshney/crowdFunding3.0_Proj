@@ -21,7 +21,7 @@
 Clone the project
 
 ```bash
-  git clone https://github.com/Deep5Varshney/khoya-paya.git
+  git clone https://github.com/Deep5Varshney/crowdFunding3.0_Proj.git
 ```
 
 Go to the project directory
