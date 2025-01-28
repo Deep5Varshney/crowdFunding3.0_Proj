@@ -1,8 +1,8 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useAddress, useContract, useContractWrite } from '@thirdweb-dev/react';
+import React, { createContext, useContext, ReactNode, useState } from 'react';
+import { useAddress, useContract, useContractWrite, useSigner } from '@thirdweb-dev/react';
 import { ethers } from 'ethers';
 
-// Define types for the campaign and form data
+// Define Types
 interface Campaign {
   owner: string;
   title: string;
@@ -22,16 +22,16 @@ interface FormData {
   image: string;
 }
 
-// Add types for the parameters of `donate` and `getDonations`
 interface StateContextType {
   address: string | undefined;
-  contract: any; // Could be more specific if you know the contract interface
+  setAddress: React.Dispatch<React.SetStateAction<string | undefined>>;
+  contract: any;
   createCampaign: (form: FormData) => Promise<void>;
-  connect: () => void;
+  connect: () => Promise<void>;
   getCampaigns: () => Promise<Campaign[]>;
-  getUserCampaigns: () => Promise<Campaign[]>; // Added getUserCampaigns here
-  donate: (pId: number, amount: string) => Promise<any>; // Added types for pId and amount
-  getDonations: (pId: number) => Promise<any[]>; // Added types for pId
+  getUserCampaigns: () => Promise<Campaign[]>;
+  donate: (pId: number, amount: string) => Promise<any>;
+  getDonations: (pId: number) => Promise<any[]>;
 }
 
 interface StateContextProviderProps {
@@ -41,18 +41,36 @@ interface StateContextProviderProps {
 const StateContext = createContext<StateContextType | undefined>(undefined);
 
 export const StateContextProvider: React.FC<StateContextProviderProps> = ({ children }) => {
-  const { contract } = useContract('0x7C68c62FD2b8099c40e8ABcCCeA3EF7Dd84E8aB7');
+  const { contract } = useContract('0x7C68c62FD2b8099c40e8ABcCCeA3EF7Dd84E8aB7'); // Replace with your contract address
   const { mutateAsync: createCampaign } = useContractWrite(contract, 'createCampaign');
-  const address = useAddress();
+  const [address, setAddress] = useState<string | undefined>(undefined);
+  const signer = useSigner(); // Fetch signer from the connected wallet
 
-  const connect = () => {
-    console.log('Wallet connected');
+  // Wallet Connection Function
+  const connect = async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        setAddress(accounts[0]);
+        console.log('Wallet connected:', accounts[0]);
+      } catch (error) {
+        console.error('Error connecting wallet:', error);
+      }
+    } else {
+      alert('Please install MetaMask to connect your wallet.');
+    }
   };
 
+  // Publish Campaign Function
   const publishCampaign = async (form: FormData) => {
     try {
       if (!address) {
-        alert("Please connect your wallet first.");
+        alert('Please connect your wallet first.');
+        return;
+      }
+
+      if (!signer) {
+        alert('Signer not available. Please reconnect your wallet.');
         return;
       }
 
@@ -69,21 +87,16 @@ export const StateContextProvider: React.FC<StateContextProviderProps> = ({ chil
 
       console.log('Contract call success:', data);
     } catch (error) {
-      if (error instanceof Error) {
-        console.error('Contract call failure:', error.message);
-      } else {
-        console.error('Contract call failure:', error);
-      }
+      console.error('Contract call failure:', error);
     }
   };
 
+  // Fetch Campaigns
   const getCampaigns = async (): Promise<Campaign[]> => {
-    if (!contract) {
-      throw new Error('Contract is not defined');
-    }
+    if (!contract) throw new Error('Contract is not defined');
 
     const campaigns = await contract.call('getCampaigns');
-    const parsedCampaigns = campaigns.map((campaign: any, i: number) => ({
+    return campaigns.map((campaign: any, i: number) => ({
       owner: campaign.owner,
       title: campaign.title,
       description: campaign.description,
@@ -91,57 +104,47 @@ export const StateContextProvider: React.FC<StateContextProviderProps> = ({ chil
       deadline: campaign.deadline.toNumber(),
       amountCollected: ethers.utils.formatEther(campaign.amountCollected.toString()),
       image: campaign.image,
-      pId: i
+      pId: i,
     }));
-
-    return parsedCampaigns;
   };
 
+  // Fetch User Campaigns
   const getUserCampaigns = async (): Promise<Campaign[]> => {
     const allCampaigns = await getCampaigns();
-    const filteredCampaigns = allCampaigns.filter((campaign) => campaign.owner === address);
-    return filteredCampaigns;
+    return allCampaigns.filter((campaign) => campaign.owner === address);
   };
 
+  // Donate to Campaign
   const donate = async (pId: number, amount: string): Promise<any> => {
-    if (!contract) {
-      throw new Error('Contract is not defined');
-    }
+    if (!contract) throw new Error('Contract is not defined');
 
     const data = await contract.call('donateToCampaign', [pId], { value: ethers.utils.parseEther(amount) });
     return data;
   };
 
+  // Fetch Donations
   const getDonations = async (pId: number): Promise<any[]> => {
-    if (!contract) {
-      throw new Error('Contract is not defined');
-    }
+    if (!contract) throw new Error('Contract is not defined');
 
     const donations = await contract.call('getDonators', [pId]);
-    const numberOfDonations = donations[0].length;
-
-    const parsedDonations = [];
-    for (let i = 0; i < numberOfDonations; i++) {
-      parsedDonations.push({
-        donator: donations[0][i],
-        donation: ethers.utils.formatEther(donations[1][i].toString())
-      });
-    }
-
-    return parsedDonations;
+    return donations[0].map((donator: string, index: number) => ({
+      donator,
+      donation: ethers.utils.formatEther(donations[1][index].toString()),
+    }));
   };
 
   return (
     <StateContext.Provider
       value={{
         address,
+        setAddress,
         contract,
         createCampaign: publishCampaign,
         connect,
         getCampaigns,
         getUserCampaigns,
         donate,
-        getDonations
+        getDonations,
       }}
     >
       {children}
