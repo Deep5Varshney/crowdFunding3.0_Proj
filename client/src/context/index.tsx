@@ -1,5 +1,5 @@
-import React, { createContext, useContext, ReactNode, useState } from 'react';
-import { useAddress, useContract, useContractWrite, useSigner } from '@thirdweb-dev/react';
+import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import { useContract, useContractWrite } from '@thirdweb-dev/react';
 import { ethers } from 'ethers';
 
 // Define Types
@@ -44,7 +44,24 @@ export const StateContextProvider: React.FC<StateContextProviderProps> = ({ chil
   const { contract } = useContract('0x7C68c62FD2b8099c40e8ABcCCeA3EF7Dd84E8aB7'); // Replace with your contract address
   const { mutateAsync: createCampaign } = useContractWrite(contract, 'createCampaign');
   const [address, setAddress] = useState<string | undefined>(undefined);
-  const signer = useSigner(); // Fetch signer from the connected wallet
+
+  useEffect(() => {
+    const fetchAddress = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          setAddress(accounts[0]);
+          console.log('Wallet connected:', accounts[0]);
+        } catch (error) {
+          console.error('Error fetching wallet address:', error);
+        }
+      } else {
+        console.error('Ethereum wallet not detected');
+      }
+    };
+
+    fetchAddress();
+  }, []);
 
   // Wallet Connection Function
   const connect = async () => {
@@ -69,8 +86,8 @@ export const StateContextProvider: React.FC<StateContextProviderProps> = ({ chil
         return;
       }
 
-      if (!signer) {
-        alert('Signer not available. Please reconnect your wallet.');
+      if (!contract) {
+        alert('Contract is not available.');
         return;
       }
 
